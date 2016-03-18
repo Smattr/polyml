@@ -560,8 +560,8 @@ void SaveRequest::Perform()
     }
     saveHeader.timeStamp = getBuildTime();
     saveHeader.segmentDescrCount = exports.memTableEntries; // One segment for each space.
-    // Write out the header.
-    fwrite(&saveHeader, sizeof(saveHeader), 1, exports.exportFile);
+    // Leave space for the header.
+    fseek(exports.exportFile, sizeof(saveHeader), SEEK_CUR);
 
     // We need a segment header for each permanent area whether it is
     // actually in this file or not.
@@ -586,9 +586,16 @@ void SaveRequest::Perform()
                 descrs[j].segmentFlags |= SSF_BYTES;
         }
     }
-    // Write out temporarily. Will be overwritten at the end.
+    // Leave space for the segment descriptor. Will be overwritten at the end.
     saveHeader.segmentDescr = ftell(exports.exportFile);
-    fwrite(descrs, sizeof(SavedStateSegmentDescr), exports.memTableEntries, exports.exportFile);
+    if (UINT_MAX / sizeof(SavedStateSegmentDescr) < exports.memTableEntries)
+        /* Work around for the case when `sizeof(SavedStateSegmentDescr) *
+         * exports.memTableEntries` would overflow.
+         */
+        for (unsigned j = 0; j < exports.memTableEntries; j++)
+            fseek(exports.exportFile, sizeof(SavedStateSegmentDescr), SEEK_CUR);
+    else
+        fseek(exports.exportFile, sizeof(SavedStateSegmentDescr) * exports.memTableEntries, SEEK_CUR);
 
     // Write out the relocations and the data.
     for (unsigned k = 1 /* Not IO area */; k < exports.memTableEntries; k++)
