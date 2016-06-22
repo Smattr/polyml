@@ -23,11 +23,12 @@
 #define BITMAP_H_DEFINED
 
 #include "globals.h" // For POLYUNSIGNED
+#include <vector>
 
 class Bitmap
 {
 public:
-    Bitmap(): m_bits(0) {}
+    Bitmap(): m_bits() {}
     ~Bitmap();
 
     // Allocate the bitmap bits
@@ -36,17 +37,15 @@ public:
     // Free the bitmap bits.
     void Destroy();
 
-private:
-    static unsigned char BitN(POLYUNSIGNED n) { return 1 << (n & 7); }
 public:
     // Set a single bit
-    void SetBit(POLYUNSIGNED n) { m_bits[n >> 3] |=  BitN(n); }
+    void SetBit(POLYUNSIGNED n) { m_bits[n] = true; }
     // Set a range of bits
     void SetBits(POLYUNSIGNED bitno, POLYUNSIGNED length);
     // Clear a range of bits.  May already be partly clear
     void ClearBits(POLYUNSIGNED bitno, POLYUNSIGNED length);
     // Test a bit
-    bool TestBit(POLYUNSIGNED n) const { return (m_bits[n >> 3] & BitN(n)) != 0; }
+    bool TestBit(POLYUNSIGNED n) const { return m_bits[n]; }
     // How many zero bits (maximum n) are there in the bitmap, starting at location start?
     POLYUNSIGNED CountZeroBits(POLYUNSIGNED bitno, POLYUNSIGNED n) const;
     //* search the bitmap from the high end down looking for n contiguous zeros
@@ -55,7 +54,7 @@ public:
     POLYUNSIGNED CountSetBits(POLYUNSIGNED size) const;
 private:
 
-    unsigned char *m_bits;
+    std::vector<bool> m_bits;
 };
 
 // A wrapper class that adds the address range.  It is used when scanning

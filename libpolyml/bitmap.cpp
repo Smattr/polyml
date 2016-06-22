@@ -55,19 +55,22 @@
 
 #include "bitmap.h"
 #include "globals.h"
+#include <algorithm>
+#include <vector>
 
 bool Bitmap::Create(POLYUNSIGNED bits)
 {
-    free(m_bits); // Any previous data
-    size_t bytes = (bits+7) >> 3;
-    m_bits = (unsigned char*)calloc(bytes, sizeof(unsigned char));
-    return m_bits != 0;
+    if (bits > m_bits.max_size()) {
+        // length_error would be triggered
+        return false;
+    }
+    m_bits.resize(bits, false);
+    return true;
 }
 
 void Bitmap::Destroy()
 {
-    free(m_bits);
-    m_bits = 0;
+    // nothing required
 }
 
 Bitmap::~Bitmap()
@@ -75,110 +78,50 @@ Bitmap::~Bitmap()
     Destroy();
 }
 
-// Set a range of bits in a bitmap.  This checks that the bits are not already set.
-void Bitmap::SetBits(POLYUNSIGNED bitno, POLYUNSIGNED length)
+static void fill_with(std::vector<bool> &vec, POLYUNSIGNED bitno, POLYUNSIGNED length, bool value)
 {
-    POLYUNSIGNED byte_index = bitno >> 3;
-    
     ASSERT (0 < length); // Strictly positive
-    
-    /* Set the first part byte */
-    POLYUNSIGNED start_bit_index = bitno & 7;
-    POLYUNSIGNED stop_bit_index  = start_bit_index + length;
-    /* Do we need to change more than one byte? */
-    if (stop_bit_index < 8)
-    {
-        const unsigned mask1 = 0xff << start_bit_index;
-        const unsigned mask2 = 0xff << stop_bit_index;
-        const unsigned mask  = mask1 & ~mask2;
-        
-//        ASSERT((m_bits[byte_index] & mask) == 0);
-        m_bits[byte_index] |= mask;
-        return;
-    }
-    else /* Set all the bits we can in the first byte */
-    {
-        const unsigned mask  = 0xff << start_bit_index;
-        
-//        ASSERT((m_bits[byte_index] & mask) == 0);
-        m_bits[byte_index] |= mask;
-        
-        /* length = length - (8 - start_bit_index); */
-        length = stop_bit_index - 8;
-    }
-    
-    /* Set as many full bytes as possible */
-    if (8 <= length)
-    {
-        memset(m_bits + byte_index + 1, 0xff, length >> 3);
-        byte_index += length >> 3;
-        length &= 7;
-    }
-    
-    /* Invariant: 0 <= length < 8 */
-    ASSERT(length < 8);
-    if (length == 0) return;
-    
-    /* Invariant: 0 < length < 8 */
-    
-    /* Set the final part byte */
-    byte_index ++;
-    const unsigned mask  = 0xff & ~(0xff << length);
-//    ASSERT((m_bits[byte_index] & mask) == 0);
-    m_bits[byte_index] |= mask;
+
+    // Write is in bounds
+    ASSERT (bitno < vec.size());
+    ASSERT (bitno + length - 1 < vec.size());
+
+    std::fill_n(vec.begin() + bitno, length, value);
 }
 
-// Clear a range of bits.  This is only used to clear the bitmap so
-// it does not need to be exact so long as at least the range specified
-// is zero.
+// Set a range of bits in a bitmap.
+void Bitmap::SetBits(POLYUNSIGNED bitno, POLYUNSIGNED length)
+{
+    fill_with(m_bits, bitno, length, true);
+}
+
+// Clear a range of bits.
 void Bitmap::ClearBits(POLYUNSIGNED bitno, POLYUNSIGNED length)
 {
-    POLYUNSIGNED byte_index = bitno >> 3;
-    length += bitno & 7;
-    size_t bytes = length >> 3;
-    if (length & 7) bytes++;
-    memset(m_bits+byte_index, 0, bytes);
+    fill_with(m_bits, bitno, length, false);
+}
+
+static POLYUNSIGNED count_consecutive(const std::vector<bool> &vec, POLYUNSIGNED bitno, POLYUNSIGNED n, bool value)
+{
+    POLYUNSIGNED bit_count = 0;
+    ASSERT (0 < n); // Strictly positive
+
+    // In bounds
+    ASSERT (bitno < vec.size());
+
+    for (std::vector<bool>::const_iterator it = vec.begin() + bitno; it != vec.end(); it++, bit_count++) {
+        if (*it != value || bit_count == n) {
+            break;
+        }
+    }
+
+    return bit_count;
 }
 
 // How many zero bits (maximum n) are there in the bitmap, starting at location start? */
 POLYUNSIGNED Bitmap::CountZeroBits(POLYUNSIGNED bitno, POLYUNSIGNED n) const
 {
-    POLYUNSIGNED byte_index = bitno >> 3;
-    unsigned bit_index  = bitno & 7;
-    unsigned mask  = 1 << bit_index;
-    POLYUNSIGNED zero_bits  = 0;
-    ASSERT (0 < n); // Strictly positive
-    
-    /* Check the first part byte */
-    while (mask != 0)
-    {
-        /* zero_bits < n */
-        if ((m_bits[byte_index] & mask) != 0) return zero_bits;
-        zero_bits ++;
-        if (zero_bits == n) return zero_bits;
-        mask = (mask << 1) & 0xff;
-        /* zero_bits < n */
-    }
-    
-    /* zero_bits < n */
-    
-    /* Check as many bytes as possible */
-    byte_index ++;
-    while (zero_bits < n && m_bits[byte_index] == 0)
-    {
-        zero_bits += 8;
-        byte_index ++;
-    }
-    
-    /* Check the final part byte */
-    mask = 1;
-    while (zero_bits < n && (m_bits[byte_index] & mask) == 0)
-    {
-        zero_bits ++;
-        mask = (mask << 1) & 0xff;
-    }
-    
-    return zero_bits;
+    return count_consecutive(m_bits, bitno, n, false);
 }
 
 
@@ -214,22 +157,10 @@ POLYUNSIGNED Bitmap::FindFree
 // Count the number of set bits in the bitmap.
 POLYUNSIGNED Bitmap::CountSetBits(POLYUNSIGNED size) const
 {
-    size_t bytes = (size+7) >> 3;
     POLYUNSIGNED count = 0;
-    for (size_t i = 0; i < bytes; i++)
-    {
-        unsigned char byte = m_bits[i];
-        if (byte == 0xff) // Common case
-            count += 8;
-        else
-        {
-            while (byte != 0)
-            {
-                unsigned char b = byte & (-byte);
-                count++;
-                byte -= b;
-            }
-        }
+    for (std::vector<bool>::const_iterator it = m_bits.begin(); it != m_bits.end(); it++) {
+        if (*it)
+            count++;
     }
     return count;
 }
