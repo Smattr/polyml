@@ -34,7 +34,6 @@
 #include "rts_module.h"
 #include "save_vec.h"
 
-#include "noreturn.h"
 #include "locking.h"
 
 class SaveVecEntry;
@@ -192,7 +191,7 @@ private:
     friend class Processes;
 };
 
-NORETURNFN(extern Handle exitThread(TaskData *mdTaskData));
+[[noreturn]] extern Handle exitThread(TaskData *mdTaskData);
 
 class ScanAddress;
 
@@ -296,7 +295,7 @@ public:
     // the calling thread itself to exit since this may be called on the GUI thread.
     virtual void RequestProcessExit(int n) = 0;
     // Exit from this thread.
-    virtual NORETURNFN(void ThreadExit(TaskData *taskData)) = 0;
+    [[noreturn]] virtual void ThreadExit(TaskData *taskData) = 0;
 
     virtual void BroadcastInterrupt(void) = 0;
 

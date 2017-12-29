@@ -65,7 +65,6 @@
 #endif
 
 #include "errors.h"
-#include "noreturn.h"
 #include "globals.h"
 #include "diagnostics.h"
 #include "mpoly.h"

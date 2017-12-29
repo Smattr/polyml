@@ -218,7 +218,7 @@ poly_exn *makeExceptionPacket(TaskData *taskData, int id)
     return DEREFEXNHANDLE(exn);
 }
 
-static NORETURNFN(void raise_exception(TaskData *taskData, int id, Handle arg, const char *file, int line));
+[[noreturn]] static void raise_exception(TaskData *taskData, int id, Handle arg, const char *file, int line);
 
 void raise_exception(TaskData *taskData, int id, Handle arg, const char *file, int line)
 /* Raise an exception with no arguments. */

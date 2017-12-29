@@ -24,7 +24,6 @@
 #define _RUNTIME_H_DEFINED 1
 
 #include "globals.h" // PolyWord, PolyObject etc
-#include "noreturn.h"
 
 class SaveVecEntry;
 typedef SaveVecEntry *Handle;
@@ -60,19 +59,19 @@ extern Handle makeList(TaskData *taskData, int count, char *p, int size, void *a
                        Handle (mkEntry)(TaskData *, void*, char*));
 
 // Exceptions without an argument e.g. Size and Overflow
-NORETURNFN(extern void raiseException0WithLocation(TaskData *taskData, int id, const char *file, int line));
+[[noreturn]] extern void raiseException0WithLocation(TaskData *taskData, int id, const char *file, int line);
 #define raise_exception0(taskData, id) raiseException0WithLocation(taskData, id, __FILE__, __LINE__)
 
 // Exceptions with a string argument e.g. Foreign
-NORETURNFN(extern void raiseExceptionStringWithLocation(TaskData *taskData, int id, const char *str, const char *file, int line));
+[[noreturn]] extern void raiseExceptionStringWithLocation(TaskData *taskData, int id, const char *str, const char *file, int line);
 #define raise_exception_string(taskData, id, str) raiseExceptionStringWithLocation(taskData, id, str, __FILE__, __LINE__)
 
 // Fail exception
-NORETURNFN(extern void raiseExceptionFailWithLocation(TaskData *taskData, const char *str, const char *file, int line));
+[[noreturn]] extern void raiseExceptionFailWithLocation(TaskData *taskData, const char *str, const char *file, int line);
 #define raise_fail(taskData, errmsg) raiseExceptionFailWithLocation(taskData, errmsg, __FILE__, __LINE__)
 
 // Syscall exception.  The errmsg argument is ignored and replaced with the standard string unless err is zero.
-NORETURNFN(extern void raiseSycallWithLocation(TaskData *taskData, const char *errmsg, int err, const char *file, int line));
+[[noreturn]] extern void raiseSycallWithLocation(TaskData *taskData, const char *errmsg, int err, const char *file, int line);
 #define raise_syscall(taskData, errMsg, err) raiseSycallWithLocation(taskData, errMsg, err, __FILE__, __LINE__)
 
 // Construct an exception packet for future use

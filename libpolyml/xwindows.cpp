@@ -251,7 +251,7 @@ extern "C" {
     POLYEXTERNALSYMBOL POLYUNSIGNED PolyXWindowsGeneral(PolyObject *threadId, PolyWord params);
 }
 /* The following are only forward so we can declare attributes */
-static void RaiseXWindows(TaskData *taskData, const char *s) __attribute__((noreturn));
+[[noreturn]] static void RaiseXWindows(TaskData *taskData, const char *s);
 
 
 #define ButtonClickMask (((unsigned)1 << 29))

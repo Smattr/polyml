@@ -506,7 +506,6 @@ noinst_HEADERS = \
 	memmgr.h \
 	mpoly.h \
 	network.h \
-	noreturn.h \
 	objsize.h \
 	osmem.h \
 	os_specific.h \

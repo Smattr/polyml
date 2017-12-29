@@ -79,7 +79,6 @@
 #include "pexport.h"
 #include "polystring.h"
 #include "statistics.h"
-#include "noreturn.h"
 
 #if (defined(_WIN32) && ! defined(__CYGWIN__))
 #include "Console.h"
@@ -90,7 +89,7 @@ static const TCHAR *lpszServiceName = 0; // DDE service name
 FILE *polyStdout, *polyStderr; // Redirected in the Windows GUI
 
 static void  InitHeaderFromExport(exportDescription *exports);
-NORETURNFN(static void Usage(const char *message, ...));
+[[noreturn]] static void Usage(const char *message, ...);
 
 
 struct _userOptions userOptions;

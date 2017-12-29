@@ -23,7 +23,6 @@
 
 #ifndef _DIAGNOSTICS_H_USED
 #define _DIAGNOSTICS_H_USED
-#include "noreturn.h"
 #include "globals.h"
 
 #ifdef HAVE_TCHAR_H
@@ -32,10 +31,10 @@
 typedef char TCHAR;
 #endif
 
-NORETURNFN(extern void Exit(const char *, ...));
-NORETURNFN(extern void Crash(const char *, ...));
+[[noreturn]] extern void Exit(const char *, ...);
+[[noreturn]] extern void Crash(const char *, ...);
 
-NORETURNFN(extern void ExitWithError(const char *, int err));
+[[noreturn]] extern void ExitWithError(const char *, int err);
 
 extern void SetLogFile(const TCHAR *fileName);
 extern void Log(const char *, ...);

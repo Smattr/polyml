@@ -117,7 +117,6 @@
 #include "scanaddrs.h"
 #include "save_vec.h"
 #include "rts_module.h"
-#include "noreturn.h"
 #include "memmgr.h"
 #include "locking.h"
 #include "profiling.h"
@@ -197,7 +196,7 @@ public:
     void BeginRootThread(PolyObject *rootFunction);
     void RequestProcessExit(int n); // Request all ML threads to exit and set the process result code.
     // Called when a thread has completed - doesn't return.
-    virtual NORETURNFN(void ThreadExit(TaskData *taskData));
+    [[noreturn]] virtual void ThreadExit(TaskData *taskData);
 
     // Called when a thread may block.  Returns some time later when perhaps
     // the input is available.

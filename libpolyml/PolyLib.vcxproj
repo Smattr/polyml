@@ -394,7 +394,6 @@
     <ClInclude Include="memmgr.h" />
     <ClInclude Include="mpoly.h" />
     <ClInclude Include="network.h" />
-    <ClInclude Include="noreturn.h" />
     <ClInclude Include="objsize.h" />
     <ClInclude Include="osmem.h" />
     <ClInclude Include="os_specific.h" />

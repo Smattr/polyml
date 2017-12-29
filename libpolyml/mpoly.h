@@ -29,7 +29,6 @@
 typedef char TCHAR;
 #endif
 
-#include "noreturn.h"
 #include "../polyexports.h"
 
 extern struct _userOptions {
@@ -41,7 +40,7 @@ extern struct _userOptions {
 
 class PolyWord;
 
-NORETURNFN(extern void finish(int n));
+[[noreturn]] extern void finish(int n);
 
 extern char *RTSArgHelp(void);
 
