@@ -44,38 +44,7 @@
 #include <pthread.h>
 #endif
 
-// Simple Mutex.
-class PLock {
-public:
-    PLock(const char *n = 0);
-    ~PLock();
-    void Lock(void); // Lock the mutex
-    void Unlock(void); // Unlock the mutex
-    bool Trylock(void); // Try to lock the mutex - returns true if succeeded
-
-private:
-#if ((!defined(_WIN32) || defined(__CYGWIN__)) && defined(HAVE_PTHREAD_H))
-    pthread_mutex_t lock;
-#elif defined(HAVE_WINDOWS_H)
-    CRITICAL_SECTION lock;
-#endif
-    // Debugging info.
-    const char *lockName;
-    unsigned lockCount;
-
-    friend class PCondVar;
-};
-
-// Lock a mutex and automatically unlock it in the destructor.
-// This can be used in a function to lock a mutex and unlock it
-// when the function either returns normally or raises an exception.
-class PLocker {
-public:
-    PLocker(PLock *lock): m_lock(lock) { m_lock->Lock(); }
-    ~PLocker() { m_lock->Unlock(); }
-private:
-    PLock *m_lock;
-};
+#include <mutex>
 
 // Simple condition variable.  N.B.  The Windows code does not
 // support multiple threads blocking on this condition variable.
@@ -83,16 +52,16 @@ class PCondVar {
 public:
     PCondVar();
     ~PCondVar();
-    void Wait(PLock *pLock); // Wait indefinitely.  Drops the lock and reaquires it.
+    void Wait(std::mutex *pLock); // Wait indefinitely.  Drops the lock and reaquires it.
     // Wait for a signal or until the time.  The argument is an absolute time
     // represented as a struct timespec in Unix and a FILETIME in Windows.
 #if (defined(_WIN32) && ! defined(__CYGWIN__))
-    void WaitUntil(PLock *pLock, const FILETIME *timeArg);
+    void WaitUntil(std::mutex *pLock, const FILETIME *timeArg);
 #else
-    void WaitUntil(PLock *pLock, const timespec *timeArg);
+    void WaitUntil(std::mutex *pLock, const timespec *timeArg);
 #endif
     // Wait for a time.  This is used internally in the RTS.
-    bool WaitFor(PLock *pLock, unsigned milliseconds);
+    bool WaitFor(std::mutex *pLock, unsigned milliseconds);
     // N.B.  Signal MUST be called only with the lock held.
     void Signal(void); // Wake up the waiting thread.
 private:

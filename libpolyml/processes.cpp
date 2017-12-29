@@ -118,7 +118,7 @@
 #include "save_vec.h"
 #include "rts_module.h"
 #include "memmgr.h"
-#include "locking.h"
+#include <mutex>
 #include "profiling.h"
 #include "sharedata.h"
 #include "exporter.h"
@@ -261,7 +261,7 @@ public:
 
     // Signal handling support.  The ML signal handler thread blocks until it is
     // woken up by the signal detection thread.
-    virtual bool WaitForSignal(TaskData *taskData, PLock *sigLock);
+    virtual bool WaitForSignal(TaskData *taskData, std::mutex *sigLock);
     virtual void SignalArrived(void);
 
     virtual void SetSingleThreaded(void) { singleThreaded = true; }
@@ -288,7 +288,7 @@ public:
        them or scanning the array.
        It must also be held before deleting a TaskData object
        or using it in a thread other than the "owner"  */
-    PLock schedLock;
+    std::mutex schedLock;
 #ifdef HAVE_PTHREAD
     pthread_key_t tlsId;
 #elif defined(HAVE_WINDOWS_H)
@@ -329,7 +329,7 @@ static Processes processesModule;
 ProcessExternal *processes = &processesModule;
 
 Processes::Processes(): singleThreaded(false), taskArray(0), taskArraySize(0),
-    schedLock("Scheduler"), interrupt_exn(0),
+    interrupt_exn(0),
     threadRequest(0), exitResult(0), exitRequest(false), sigTask(0)
 {
 #ifdef HAVE_WINDOWS_H
@@ -427,7 +427,7 @@ POLYUNSIGNED PolyThreadMutexUnlock(PolyObject *threadId, PolyWord arg)
   get the lock again. */
 void Processes::MutexBlock(TaskData *taskData, Handle hMutex)
 {
-    schedLock.Lock();
+    schedLock.lock();
     // We have to check the value again with schedLock held rather than
     // simply waiting because otherwise the unlocking thread could have
     // set the variable back to 1 (unlocked) and signalled any waiters
@@ -464,7 +464,7 @@ void Processes::MutexBlock(TaskData *taskData, Handle hMutex)
         ThreadUseMLMemoryWithSchedLock(taskData);
     }
     // Return and try and get the lock again.
-    schedLock.Unlock();
+    schedLock.unlock();
     // Test to see if we have been interrupted and if this thread
     // processes interrupts asynchronously we should raise an exception
     // immediately.  Perhaps we do that whenever we exit from the RTS.
@@ -480,7 +480,7 @@ void Processes::MutexUnlock(TaskData *taskData, Handle hMutex)
     // be sure that any thread that is trying to lock sees either
     // the updated value (and so doesn't wait) or has successfully
     // waited on its threadLock (and so will be woken up).
-    schedLock.Lock();
+    schedLock.lock();
     // Unlock any waiters.
     for (unsigned i = 0; i < taskArraySize; i++)
     {
@@ -489,7 +489,7 @@ void Processes::MutexUnlock(TaskData *taskData, Handle hMutex)
         if (p && p->blockMutex == DEREFHANDLE(hMutex))
             p->threadLock.Signal();
     }
-    schedLock.Unlock();
+    schedLock.unlock();
 }
 
 POLYUNSIGNED PolyThreadCondVarWait(PolyObject *threadId, PolyWord arg)
@@ -544,7 +544,7 @@ POLYUNSIGNED PolyThreadCondVarWaitUntil(PolyObject *threadId, PolyWord lockArg, 
 //      a trap i.e. a request to handle an asynchronous event.
 void Processes::WaitInfinite(TaskData *taskData, Handle hMutex)
 {
-    schedLock.Lock();
+    schedLock.lock();
     // Atomically release the mutex.  This is atomic because we hold schedLock
     // so no other thread can call signal or broadcast.
     Handle decrResult = taskData->AtomicIncrement(hMutex);
@@ -573,7 +573,7 @@ void Processes::WaitInfinite(TaskData *taskData, Handle hMutex)
         // We want to use the memory again.
         ThreadUseMLMemoryWithSchedLock(taskData);
     }
-    schedLock.Unlock();
+    schedLock.unlock();
 }
 
 // Atomically drop a mutex and wait for a wake up or a time to wake up
@@ -595,7 +595,7 @@ void Processes::WaitUntilTime(TaskData *taskData, Handle hMutex, Handle hWakeTim
     tWake.tv_nsec =
         1000*get_C_ulong(taskData, DEREFWORD(rem_longc(taskData, hMillion, hWakeTime)));
 #endif
-    schedLock.Lock();
+    schedLock.lock();
     // Atomically release the mutex.  This is atomic because we hold schedLock
     // so no other thread can call signal or broadcast.
     Handle decrResult = taskData->AtomicIncrement(hMutex);
@@ -624,7 +624,7 @@ void Processes::WaitUntilTime(TaskData *taskData, Handle hMutex, Handle hWakeTim
         // We want to use the memory again.
         ThreadUseMLMemoryWithSchedLock(taskData);
     }
-    schedLock.Unlock();
+    schedLock.unlock();
 }
 
 bool Processes::WakeThread(PolyObject *targetThread)
@@ -632,7 +632,7 @@ bool Processes::WakeThread(PolyObject *targetThread)
     bool result = false; // Default to failed.
     // Acquire the schedLock first.  This ensures that this is
     // atomic with respect to waiting.
-    schedLock.Lock();
+    schedLock.lock();
     TaskData *p = TaskForIdentifier(targetThread);
     if (p && p->threadObject == targetThread)
     {
@@ -644,7 +644,7 @@ bool Processes::WakeThread(PolyObject *targetThread)
             result = true;
         }
     }
-    schedLock.Unlock();
+    schedLock.unlock();
     return result;
 }
 
@@ -658,9 +658,9 @@ POLYUNSIGNED PolyThreadCondVarWake(PolyWord targetThread)
 // Test if a thread is active.
 POLYUNSIGNED PolyThreadIsActive(PolyWord targetThread)
 {
-    processesModule.schedLock.Lock();
+    processesModule.schedLock.lock();
     TaskData *p = processesModule.TaskForIdentifier(targetThread.AsObjPtr());
-    processesModule.schedLock.Unlock();
+    processesModule.schedLock.unlock();
     if (p != 0) return TAGGED(1).AsUnsigned();
     else return TAGGED(0).AsUnsigned();
 }
@@ -668,10 +668,10 @@ POLYUNSIGNED PolyThreadIsActive(PolyWord targetThread)
 // Send an interrupt to a specific thread
 POLYUNSIGNED PolyThreadInterruptThread(PolyWord targetThread)
 {
-    processesModule.schedLock.Lock();
+    processesModule.schedLock.lock();
     TaskData *p = processesModule.TaskForIdentifier(targetThread.AsObjPtr());
     if (p) processesModule.MakeRequest(p, kRequestInterrupt);
-    processesModule.schedLock.Unlock();
+    processesModule.schedLock.unlock();
     // If the thread cannot be identified return false.
     // The caller can then raise an exception
     if (p == 0) return TAGGED(0).AsUnsigned();
@@ -681,10 +681,10 @@ POLYUNSIGNED PolyThreadInterruptThread(PolyWord targetThread)
 // Kill a specific thread
 POLYUNSIGNED PolyThreadKillThread(PolyWord targetThread)
 {
-    processesModule.schedLock.Lock();
+    processesModule.schedLock.lock();
     TaskData *p = processesModule.TaskForIdentifier(targetThread.AsObjPtr());
     if (p) processesModule.MakeRequest(p, kRequestKill);
-    processesModule.schedLock.Unlock();
+    processesModule.schedLock.unlock();
     // If the thread cannot be identified return false.
     // The caller can then raise an exception
     if (p == 0) return TAGGED(0).AsUnsigned();
@@ -852,7 +852,7 @@ TaskData *Processes::TaskForIdentifier(PolyObject *taskId)
 // Return the task data for a task id.
 TaskData *TaskData::FindTaskForId(PolyObject *taskId)
 {
-    PLocker lock(&processesModule.schedLock);
+    std::lock_guard<std::mutex> lock(processesModule.schedLock);
     return processesModule.TaskForIdentifier(taskId);
 }
 
@@ -861,7 +861,7 @@ void Processes::BroadcastInterrupt(void)
 {
     // If a thread is set to accept broadcast interrupts set it to
     // "interrupted".
-    schedLock.Lock();
+    schedLock.lock();
     for (unsigned i = 0; i < taskArraySize; i++)
     {
         TaskData *p = taskArray[i];
@@ -872,7 +872,7 @@ void Processes::BroadcastInterrupt(void)
                 MakeRequest(p, kRequestInterrupt);
         }
     }
-    schedLock.Unlock();
+    schedLock.unlock();
 }
 
 // Set the asynchronous request variable for the thread.  Must be called
@@ -914,11 +914,11 @@ void Processes::ThreadExit(TaskData *taskData)
 
     if (singleThreaded) finish(0);
 
-    schedLock.Lock();
+    schedLock.lock();
     ThreadReleaseMLMemoryWithSchedLock(taskData); // Allow a GC if it was waiting for us.
     taskData->threadExited = true;
     initialThreadWait.Signal(); // Tell it we've finished.
-    schedLock.Unlock();
+    schedLock.unlock();
 #ifdef HAVE_PTHREAD
     pthread_exit(0);
 #elif defined(HAVE_WINDOWS_H)
@@ -931,16 +931,16 @@ void Processes::ThreadExit(TaskData *taskData)
 void Processes::ThreadUseMLMemory(TaskData *taskData)
 {
     // Trying to acquire the lock here may block if a GC is in progress
-    schedLock.Lock();
+    schedLock.lock();
     ThreadUseMLMemoryWithSchedLock(taskData);
-    schedLock.Unlock();
+    schedLock.unlock();
 }
 
 void Processes::ThreadReleaseMLMemory(TaskData *taskData)
 {
-    schedLock.Lock();
+    schedLock.lock();
     ThreadReleaseMLMemoryWithSchedLock(taskData);
-    schedLock.Unlock();
+    schedLock.unlock();
 }
 
 // Called when a thread wants to resume using the ML heap.  That could
@@ -994,7 +994,7 @@ void Processes::MakeRootRequest(TaskData *taskData, MainThreadRequest *request)
     }
     else
     {
-        PLocker locker(&schedLock);
+        std::lock_guard<std::mutex> locker(schedLock);
 
         // Wait for any other requests. 
         while (threadRequest != 0)
@@ -1068,7 +1068,7 @@ PolyWord *Processes::FindAllocationSpace(TaskData *taskData, POLYUNSIGNED words,
             // another GC.
             if (! singleThreaded)
             {
-                PLocker locker(&schedLock);
+                std::lock_guard<std::mutex> locker(schedLock);
                 if (threadRequest != 0)
                 {
                     ThreadReleaseMLMemoryWithSchedLock(taskData);
@@ -1262,7 +1262,7 @@ TaskData *Processes::CreateNewTaskData(Handle threadId, Handle threadFunction,
     unsigned thrdIndex;
 
     {
-        PLocker lock(&schedLock);
+        std::lock_guard<std::mutex> lock(schedLock);
         // See if there's a spare entry in the array.
         for (thrdIndex = 0;
                 thrdIndex < taskArraySize && taskArray[thrdIndex] != 0;
@@ -1280,7 +1280,7 @@ TaskData *Processes::CreateNewTaskData(Handle threadId, Handle threadFunction,
             else
             {
                 delete(taskData);
-                schedLock.Unlock();
+                schedLock.unlock();
                 throw MemoryException();
             }
         }
@@ -1446,7 +1446,7 @@ void Processes::BeginRootThread(PolyObject *rootFunction)
             NewThreadFunction(taskData);
         }
 
-        schedLock.Lock();
+        schedLock.lock();
         int errorCode = 0;
 #ifdef HAVE_PTHREAD
         if (pthread_create(&taskData->threadId, NULL, NewThreadFunction, taskData) != 0)
@@ -1592,7 +1592,7 @@ void Processes::BeginRootThread(PolyObject *rootFunction)
         freeSpace += gMem.GetFreeAllocSpace();
         globalStats.updatePeriodicStats(freeSpace, threadsInML);
     }
-    schedLock.Unlock();
+    schedLock.unlock();
     finish(exitResult); // Close everything down and exit.
 }
 
@@ -1619,13 +1619,13 @@ Handle Processes::ForkThread(TaskData *taskData, Handle threadFunction,
             newTaskData->threadObject->debuggerSlots[i] = TAGGED(0);
 
         unsigned thrdIndex;
-        schedLock.Lock();
+        schedLock.lock();
         // Before forking a new thread check to see whether we have been asked
         // to exit.  Processes::Exit sets the current set of threads to exit but won't
         // see a new thread.
         if (taskData->requests == kRequestKill)
         {
-            schedLock.Unlock();
+            schedLock.unlock();
             // Raise an exception although the thread may exit before we get there.
             raise_exception_string(taskData, EXC_thread, "Thread is exiting");
         }
@@ -1647,14 +1647,14 @@ Handle Processes::ForkThread(TaskData *taskData, Handle threadFunction,
             else
             {
                 delete(newTaskData);
-                schedLock.Unlock();
+                schedLock.unlock();
                 raise_exception_string(taskData, EXC_thread, "Too many threads");
             }
         }
         // Add into the new entry
         taskArray[thrdIndex] = newTaskData;
         newTaskData->threadObject->index = TAGGED(thrdIndex); // Set to the index
-        schedLock.Unlock();
+        schedLock.unlock();
 
         newTaskData->stack = gMem.NewStackSpace(machineDependent->InitialStackSize());
         if (newTaskData->stack == 0)
@@ -1669,7 +1669,7 @@ Handle Processes::ForkThread(TaskData *taskData, Handle threadFunction,
 
         // Now actually fork the thread.
         bool success = false;
-        schedLock.Lock();
+        schedLock.lock();
 #ifdef HAVE_PTHREAD
         success = pthread_create(&newTaskData->threadId, NULL, NewThreadFunction, newTaskData) == 0;
 #elif defined(HAVE_WINDOWS_H)
@@ -1679,7 +1679,7 @@ Handle Processes::ForkThread(TaskData *taskData, Handle threadFunction,
 #endif
         if (success)
         {
-            schedLock.Unlock();
+            schedLock.unlock();
 
             if (debugOptions & DEBUG_THREADS)
                 Log("THREAD: Forking new thread %p from thread %p\n", newTaskData, taskData);
@@ -1689,7 +1689,7 @@ Handle Processes::ForkThread(TaskData *taskData, Handle threadFunction,
         // Thread creation failed.
         taskArray[thrdIndex] = 0;
         delete(newTaskData);
-        schedLock.Unlock();
+        schedLock.unlock();
 
         if (debugOptions & DEBUG_THREADS)
             Log("THREAD: Fork from thread %p failed\n", taskData);
@@ -1744,12 +1744,12 @@ bool Processes::ProcessAsynchRequests(TaskData *taskData)
     bool wasInterrupted = false;
     TaskData *ptaskData = taskData;
 
-    schedLock.Lock();
+    schedLock.lock();
 
     switch (ptaskData->requests)
     {
     case kRequestNone:
-        schedLock.Unlock();
+        schedLock.unlock();
         break;
 
     case kRequestInterrupt:
@@ -1770,17 +1770,17 @@ bool Processes::ProcessAsynchRequests(TaskData *taskData)
                 }
                 ptaskData->requests = kRequestNone; // Clear this
                 ptaskData->threadObject->requestCopy = TAGGED(0); // And in the ML copy
-                schedLock.Unlock();
+                schedLock.unlock();
                 // Don't actually throw the exception here.
                 taskData->SetException(interrupt_exn);
                 wasInterrupted = true;
             }
-            else schedLock.Unlock();
+            else schedLock.unlock();
         }
         break;
 
     case kRequestKill: // The thread has been asked to stop.
-        schedLock.Unlock();
+        schedLock.unlock();
         throw KillException();
         // Doesn't return.
     }
@@ -1807,11 +1807,11 @@ bool Processes::ProcessAsynchRequests(TaskData *taskData)
 void Processes::TestSynchronousRequests(TaskData *taskData)
 {
     TaskData *ptaskData = taskData;
-    schedLock.Lock();
+    schedLock.lock();
     switch (ptaskData->requests)
     {
     case kRequestNone:
-        schedLock.Unlock();
+        schedLock.unlock();
         break;
 
     case kRequestInterrupt:
@@ -1824,16 +1824,16 @@ void Processes::TestSynchronousRequests(TaskData *taskData)
             {
                 ptaskData->requests = kRequestNone; // Clear this
                 ptaskData->threadObject->requestCopy = TAGGED(0);
-                schedLock.Unlock();
+                schedLock.unlock();
                 taskData->SetException(interrupt_exn);
                 throw IOException();
             }
-            else schedLock.Unlock();
+            else schedLock.unlock();
         }
         break;
 
     case kRequestKill: // The thread has been asked to stop.
-        schedLock.Unlock();
+        schedLock.unlock();
         throw KillException();
         // Doesn't return.
     }
@@ -1857,7 +1857,7 @@ void Processes::RequestProcessExit(int n)
 
     exitResult = n;
     exitRequest = true;
-    PLocker lock(&schedLock); // Lock so we know the main thread is waiting
+    std::lock_guard<std::mutex> lock(schedLock); // Lock so we know the main thread is waiting
     initialThreadWait.Signal(); // Wake it if it's sleeping.
 }
 
@@ -1923,7 +1923,7 @@ void Processes::ProfileInterrupt(void)
     {
         // We need to hold schedLock to examine the taskArray but
         // that is held during garbage collection.
-        if (schedLock.Trylock())
+        if (schedLock.try_lock())
         {
             for (unsigned i = 0; i < taskArraySize; i++)
             {
@@ -1943,7 +1943,7 @@ void Processes::ProfileInterrupt(void)
                     }
                 }
             }
-            schedLock.Unlock();
+            schedLock.unlock();
         }
         // Check the CPU time used by the main thread.  This is used for GC
         // so we need to check that as well.
@@ -2006,15 +2006,15 @@ void Processes::StopProfiling(void)
 
 // Called by the ML signal handling thread.  It blocks until a signal
 // arrives.  There should only be a single thread waiting here.
-bool Processes::WaitForSignal(TaskData *taskData, PLock *sigLock)
+bool Processes::WaitForSignal(TaskData *taskData, std::mutex *sigLock)
 {
     TaskData *ptaskData = taskData;
     // We need to hold the signal lock until we have acquired schedLock.
-    schedLock.Lock();
-    sigLock->Unlock();
+    schedLock.lock();
+    sigLock->unlock();
     if (sigTask != 0)
     {
-        schedLock.Unlock();
+        schedLock.unlock();
         return false;
     }
     sigTask = ptaskData;
@@ -2031,7 +2031,7 @@ bool Processes::WaitForSignal(TaskData *taskData, PLock *sigLock)
     }
 
     sigTask = 0;
-    schedLock.Unlock();
+    schedLock.unlock();
     return true;
 }
 
@@ -2039,7 +2039,7 @@ bool Processes::WaitForSignal(TaskData *taskData, PLock *sigLock)
 // thread.  Must be called AFTER releasing sigLock.
 void Processes::SignalArrived(void)
 {
-    PLocker locker(&schedLock);
+    std::lock_guard<std::mutex> locker(schedLock);
     if (sigTask)
         sigTask->threadLock.Signal();
 }

@@ -26,7 +26,7 @@
 #endif
 
 #include "globals.h"
-#include "locking.h"
+#include <mutex>
 #include "rts_module.h"
 
 #include "../polystatistics.h"
@@ -99,7 +99,7 @@ public:
     bool exportStats;
 
 private:
-    PLock accessLock;
+    std::mutex accessLock;
 #ifdef HAVE_WINDOWS_H
     // File mapping handle
     HANDLE hFileMap;

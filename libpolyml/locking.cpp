@@ -76,76 +76,6 @@
 // Report contended locks after this many attempts
 #define LOCK_REPORT_COUNT   50
 
-PLock::PLock(const char *n): lockName(n), lockCount(0)
-{
-#ifdef HAVE_PTHREAD
-    pthread_mutex_init(&lock, 0);
-#elif defined(HAVE_WINDOWS_H)
-    InitializeCriticalSection(&lock);
-#endif
-}
-
-PLock::~PLock()
-{
-#ifdef HAVE_PTHREAD
-    pthread_mutex_destroy(&lock);
-#elif defined(HAVE_WINDOWS_H)
-    DeleteCriticalSection(&lock);
-#endif
-}
-
-void PLock::Lock(void)
-{
-#if (defined(HAVE_PTHREAD) || defined(HAVE_WINDOWS_H))
-    if (debugOptions & DEBUG_CONTENTION)
-    {
-        // Report a heavily contended lock.
-        if (Trylock())
-            return;
-        if (++lockCount > LOCK_REPORT_COUNT)
-        {
-            if (lockName != 0)
-                Log("Lock: contention on lock: %s\n", lockName);
-            else
-                Log("Lock: contention on lock at %p\n", &lock);
-            lockCount = 0;
-        }
-        // Drop through to a normal lock
-    }
-#endif
-#ifdef HAVE_PTHREAD
-    pthread_mutex_lock(&lock);
-#elif defined(HAVE_WINDOWS_H)
-    EnterCriticalSection(&lock);
-#endif
-    // If we don't support threads this does nothing.
-}
-
-void PLock::Unlock(void)
-{
-#ifdef HAVE_PTHREAD
-    pthread_mutex_unlock(&lock);
-#elif defined(HAVE_WINDOWS_H)
-    LeaveCriticalSection(&lock);
-#endif
-}
-
-bool PLock::Trylock(void)
-{
-#ifdef HAVE_PTHREAD
-    // Since we use normal mutexes this returns EBUSY if the
-    // current thread owns the mutex.
-    return pthread_mutex_trylock(&lock) != EBUSY;
-#elif defined(HAVE_WINDOWS_H)
-    // This is not implemented properly in Windows.  There is
-    // TryEnterCriticalSection in Win NT and later but that
-    // returns TRUE if the current thread owns the mutex.
-   return TryEnterCriticalSection(&lock) == TRUE;
-#else
-   return true; // Single-threaded.
-#endif
-}
-
 PCondVar::PCondVar()
 {
 #ifdef HAVE_PTHREAD
@@ -163,7 +93,7 @@ PCondVar::~PCondVar()
 }
 
 // Wait indefinitely.  Drops the lock and reaquires it.
-void PCondVar::Wait(PLock *pLock)
+void PCondVar::Wait(std::mutex *pLock)
 {
 #ifdef HAVE_PTHREAD
     pthread_cond_wait(&cond, &pLock->lock);

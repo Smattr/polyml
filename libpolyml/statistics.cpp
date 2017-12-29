@@ -433,7 +433,7 @@ void Statistics::incCount(int which)
 {
     if (statMemory && counterAddrs[which])
     {
-        PLocker lock(&accessLock);
+        std::lock_guard<std::mutex> lock(accessLock);
         unsigned length = counterAddrs[which][-1];
         while (length--)
         {
@@ -447,7 +447,7 @@ void Statistics::decCount(int which)
 {
     if (statMemory && counterAddrs[which])
     {
-        PLocker lock(&accessLock);
+        std::lock_guard<std::mutex> lock(accessLock);
         unsigned length = counterAddrs[which][-1];
         while (length--)
         {
@@ -482,7 +482,7 @@ void Statistics::setSize(int which, size_t s)
 {
     if (statMemory && counterAddrs[which])
     {
-        PLocker lock(&accessLock);
+        std::lock_guard<std::mutex> lock(accesslock);
         setSizeWithLock(which, s);
     }
 }
@@ -491,7 +491,7 @@ void Statistics::incSize(int which, size_t s)
 {
     if (statMemory && counterAddrs[which])
     {
-        PLocker lock(&accessLock);
+        std::lock_guard<std::mutex> lock(accesslock);
         setSizeWithLock(which, getSizeWithLock(which) + s);
     }
 }
@@ -500,7 +500,7 @@ void Statistics::decSize(int which, size_t s)
 {
     if (statMemory && counterAddrs[which])
     {
-        PLocker lock(&accessLock);
+        std::lock_guard<std::mutex> lock(accesslock);
         setSizeWithLock(which, getSizeWithLock(which) - s);
     }
 }
@@ -509,7 +509,7 @@ size_t Statistics::getSize(int which)
 {
     if (statMemory && counterAddrs[which])
     {
-        PLocker lock(&accessLock);
+        std::lock_guard<std::mutex> lock(accesslock);
         return getSizeWithLock(which);
     }
     else return 0;
@@ -519,7 +519,7 @@ void Statistics::setTimeValue(int which, unsigned long secs, unsigned long usecs
 {
     if (statMemory && timeAddrs[which].secAddr && timeAddrs[which].usecAddr)
     {
-        PLocker lock(&accessLock); // Necessary ???
+        std::lock_guard<std::mutex> lock(accesslock); // Necessary ???
         unsigned sLength = timeAddrs[which].secAddr[-1];
         while (sLength--)
         {
@@ -589,7 +589,7 @@ void Statistics::updatePeriodicStats(POLYUNSIGNED freeWords, unsigned threadsInM
 
     if (statMemory && counterAddrs[PSC_THREADS_IN_ML])
     {
-        PLocker lock(&accessLock);
+        std::lock_guard<std::mutex> lock(accesslock);
         unsigned length = counterAddrs[PSC_THREADS_IN_ML][-1];
         while (length--)
         {
@@ -603,7 +603,7 @@ void Statistics::setUserCounter(unsigned which, POLYSIGNED value)
 {
     if (statMemory && userAddrs[which])
     {
-        PLocker lock(&accessLock); // Not really needed
+        std::lock_guard<std::mutex> lock(accesslock); // Not really needed
         // The ASN1 int is big-endian
         unsigned length = userAddrs[which][-1];
         while (length--)
