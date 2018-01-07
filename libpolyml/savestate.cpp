@@ -615,8 +615,7 @@ void SaveRequest::Perform()
     }
     saveHeader.timeStamp = getBuildTime();
     saveHeader.segmentDescrCount = exports.memTableEntries; // One segment for each space.
-    // Write out the header.
-    fwrite(&saveHeader, sizeof(saveHeader), 1, exports.exportFile);
+    off_t exportFileOffset = sizeof(saveHeader); // The eventual offset into exportFile.
 
     // We need a segment header for each permanent area whether it is
     // actually in this file or not.
@@ -643,9 +642,9 @@ void SaveRequest::Perform()
         if (entry->mtFlags & MTF_EXECUTABLE)
             descrs[j].segmentFlags |= SSF_CODE;
     }
-    // Write out temporarily. Will be overwritten at the end.
-    saveHeader.segmentDescr = ftell(exports.exportFile);
-    fwrite(descrs, sizeof(SavedStateSegmentDescr), exports.memTableEntries, exports.exportFile);
+    // Save information about where this will be written out to.
+    saveHeader.segmentDescr = exportFileOffset;
+    exportFileOffset += sizeof(SavedStateSegmentDescr) * exports.memTableEntries;
 
     // Write out the relocations and the data.
     for (unsigned k = 1 /* Not IO area */; k < exports.memTableEntries; k++)
@@ -656,7 +655,7 @@ void SaveRequest::Perform()
         if (k >= permanentEntries ||
             (entry->mtFlags & (MTF_WRITEABLE|MTF_NO_OVERWRITE)) == MTF_WRITEABLE)
         {
-            descrs[k].relocations = ftell(exports.exportFile);
+            descrs[k].relocations = exportFileOffset;
             // Have to write this out.
             exports.relocationCount = 0;
             // Create the relocation table.
@@ -676,26 +675,29 @@ void SaveRequest::Perform()
                 p += length;
             }
             descrs[k].relocationCount = exports.relocationCount;
-            // Write out the data.
-            descrs[k].segmentData = ftell(exports.exportFile);
-            fwrite(entry->mtAddr, entry->mtLength, 1, exports.exportFile);
+            // Note where the data will be written out.
+            descrs[k].segmentData = exportFileOffset;
+            exportFileOffset += entry->mtLength;
        }
     }
 
     // If this is a child we need to write a string table containing the parent name.
     if (newHierarchy > 1)
     {
-        saveHeader.stringTable = ftell(exports.exportFile);
-        _fputtc(0, exports.exportFile); // First byte of string table is zero
-        _fputts(hierarchyTable[newHierarchy-2]->fileName, exports.exportFile);
-        _fputtc(0, exports.exportFile); // A terminating null.
+        saveHeader.stringTable = exportFileOffset;
         saveHeader.stringTableSize = (_tcslen(hierarchyTable[newHierarchy-2]->fileName) + 2)*sizeof(TCHAR);
     }
 
-    // Rewrite the header and the segment tables now they're complete.
-    fseek(exports.exportFile, 0, SEEK_SET);
+    // Write the header and the segment tables now they're complete.
     fwrite(&saveHeader, sizeof(saveHeader), 1, exports.exportFile);
     fwrite(descrs, sizeof(SavedStateSegmentDescr), exports.memTableEntries, exports.exportFile);
+
+    if (newHierarchy > 1)
+    {
+        _fputtc(0, exports.exportFile); // First byte of string table is zero
+        _fputts(hierarchyTable[newHierarchy-2]->fileName, exports.exportFile);
+        _fputtc(0, exports.exportFile); // A terminating null.
+    }
 
     if (debugOptions & DEBUG_SAVING)
         Log("SAVE: Writing complete.\n");
